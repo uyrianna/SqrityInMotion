@@ -11,23 +11,42 @@ def scan_device():
 # NMAP Scanning device function end
 
 #NMAP Scanning network function start
+# NMAP Scanning network function start
 def scan_network():
     network = input("Enter the network [192.168.1.0/24]: ")
     print(f"Scanning network: {network}")
     try:
-        #nmap integration
-        result = subprocess.run(["nmap", network], capture_output=True, text=True, timeout=300)  # timeout to prevent hanging
+        # nmap integration
+        result = subprocess.run(["nmap", network], capture_output=True, text=True,
+                                timeout=300)  # timeout to prevent hanging
         output = result.stdout
         print(output)
-        ArrOutput.append(output) #appends output to a session array
+        ArrOutput.append(output)  #appends output to a session array
 
-        #Check open ports from output start
+        ip_addresses = []
+        lines = output.split('\n')
+        for line in lines:
+            if "Nmap scan report for" in line:
+                parts = line.split()
+                if len(parts) > 4:
+                    ip_address = parts[4]
+                    ip_addresses.append(ip_address)
+
+        # Check open ports from output start
         if "open" in output:
-            print("Several hosts are detected with open ports.")
-            choice = input("Proceed for vulnerability scanning?\n[1] Yes\n[2] Save output to array\n[0] Back to main menu\nEnter choice: ")
+            if ip_addresses:
+                print("Several hosts are detected with open ports:")
+                for ip in ip_addresses:
+                    print(f"IP Address: {ip}")
+            else:
+                print("Hosts with open ports detected, but IP addresses could not be determined.")
+
+            choice = input(
+                "Proceed for vulnerability scanning?\n[1] Yes\n[2] Save output to array\n[0] Back to main menu\nEnter choice: ")
 
             if choice == '1':
-                print("Initiating vulnerability scanning...")
+                ip = input("Enter device IP address: ")
+                vulScan(ip)
             elif choice == '2':
                 print("Output saved to array.")
             elif choice == '0':
@@ -36,9 +55,9 @@ def scan_network():
                 print("Invalid choice. Returning to main menu.")
         else:
             print("No open ports detected.")
-        #Check open ports from output end
+        # Check open ports from output end
 
-    #Try catch error handling
+    # Try catch error handling
     except subprocess.TimeoutExpired:
         print("The network scan is taking too long and has timed out.")
     except KeyboardInterrupt:
@@ -46,6 +65,54 @@ def scan_network():
     except Exception as e:
         print(f"An error occurred: {e}")
 # NMAP Scanning network function end
+
+#RUN VULNERABILITY SCAN function start
+def vulScan(target_ip):
+    try:
+        print(f"Running vulnerability scan on {target_ip}...")
+        command = ["sudo", "nmap", "-sV", "-p21-8000", "--script", "vulners", target_ip]
+        result = subprocess.run(command, capture_output=True, text=True)
+        output = result.stdout
+        print(output)
+
+        parse_vulnerability_summary(output) #summarize output to a readable format
+
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred while running the vulnerability scan: {e}")
+# RUN VULNERABILITY SCAN function end
+
+#Output vulscan summary start
+def parse_vulnerability_summary(output):
+    lines = output.split('\n')
+    current_port = None
+    port_summary = {}
+
+    for line in lines:
+        #Port information summary
+        if "/tcp" in line and "open" in line:
+            parts = line.split()
+            current_port = parts[0]
+            service_info = ' '.join(parts[2:])  
+            port_summary[current_port] = {'service': service_info, 'vulnerabilities': []}
+
+        #CVE information summary
+        if "CVE-" in line:
+            vuln_info = line.strip()
+            if current_port:
+                port_summary[current_port]['vulnerabilities'].append(vuln_info)
+
+    #Displaying
+    for port, details in port_summary.items():
+        print(f"Port {port}")
+        print(f"Service: {details['service']}")
+        if details['vulnerabilities']:
+            print("Vulnerabilities:")
+            for vuln in details['vulnerabilities']:
+                print(f"  {vuln}")
+        else:
+            print("No vulnerabilities found.")
+        print("-" * 30)
+#Output vulscan summary end
 
 #APPLICATION exit function start
 def exit_program():
